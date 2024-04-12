@@ -7,7 +7,8 @@ This repository contains the script for running Google Mediapipe Hands-Depth (GM
 
 To know more about the method, you can refer to:
 
-- ```G. Amprimo, C. Ferraris, G. Masi, G. Pettiti and L. Priano, "GMH-D: Combining Google MediaPipe and RGB-Depth Cameras for Hand Motor Skills Remote Assessment," 2022 IEEE International Conference on Digital Health (ICDH), Barcelona, Spain, 2022, pp. 132-141, doi: 10.1109/ICDH55609.2022.00029.
+```bash
+- G. Amprimo, C. Ferraris, G. Masi, G. Pettiti and L. Priano, "GMH-D: Combining Google MediaPipe and RGB-Depth Cameras for Hand Motor Skills Remote Assessment," 2022 IEEE International Conference on Digital Health (ICDH), Barcelona, Spain, 2022, pp. 132-141, doi: 10.1109/ICDH55609.2022.00029.
 - Amprimo, Gianluca, et al. "Hand tracking for clinical applications: validation of the google mediapipe hand (gmh) and
  the depth-enhanced gmh-d frameworks." arXiv preprint arXiv:2308.01088 (2023).```
 
