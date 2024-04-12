@@ -59,10 +59,10 @@ While the method was developed for Azure Kinect, it can be extended to any RGB-D
 
 ### Running the Code
 
-The main entry point of the code is the `main.py` script. You can run the script with various options to specify the processing mode, input file paths, and other parameters:
+The main entry point of the code is the `GMHD_AzureKinect.py` script. You can run the script with various options to specify the processing mode, input file paths, and other parameters:
 
 ```bash
-python main.py --mode <mode> --mkvfilepath <mkvfilepath> --mkvfilename <mkvfilename> --save <yes/no> --outputpath <outputpath> --outputname <outputname> --n_hands <n_hands> --handconf <handconf> --rerun_pd <rerun_pd> --jointconf <jointconf> --interval <interval> --visualize <yes/no>
+python GMHD_AzureKinect.py --mode <mode> --mkvfilepath <mkvfilepath> --mkvfilename <mkvfilename> --save <yes/no> --outputpath <outputpath> --outputname <outputname> --n_hands <n_hands> --handconf <handconf> --rerun_pd <rerun_pd> --jointconf <jointconf> --interval <interval> --visualize <yes/no>
 ```
 
 #### Options:
@@ -85,13 +85,13 @@ python main.py --mode <mode> --mkvfilepath <mkvfilepath> --mkvfilename <mkvfilen
 #### Offline Mode:
 
 ```bash
-python main.py --mode offline --mkvfilepath /path/to/mkv/folder --mkvfilename example.mkv --save yes --outputpath /path/to/output/folder --outputname tracking_data --n_hands 1 --handconf 0.5 --rerun_pd 0.2 --jointconf 0.5 --interval 5 --visualize yes
+python GMHD_AzureKinect.py --mode offline --mkvfilepath /path/to/mkv/folder --mkvfilename example.mkv --save yes --outputpath /path/to/output/folder --outputname tracking_data --n_hands 1 --handconf 0.5 --rerun_pd 0.2 --jointconf 0.5 --interval 5 --visualize yes
 ```
 
 #### Online Mode:
 
 ```bash
-python main.py --mode online --save no --n_hands 1 --handconf 0.5 --rerun_pd 0.2 --jointconf 0.5 --interval 5 --visualize yes
+python GMHD_AzureKinect.py --mode online --save no --n_hands 1 --handconf 0.5 --rerun_pd 0.2 --jointconf 0.5 --interval 5 --visualize yes
 ```
 
 ## License
