@@ -372,11 +372,6 @@ def offline_tracking(cfg):
                 previousTime_FPS = color_timestamp
             else:
                 print("Impossible to retrieve color or depth frame from camera")
-            # stop execution after --interval set seconds
-            if ((currentTime - startTime) > cfg['interval']):
-                print("Tracking recording completed")
-                cv2.destroyAllWindows()
-                break
         except EOFError:
             break
     if cfg['save'] == 'yes':
