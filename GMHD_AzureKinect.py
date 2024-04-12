@@ -335,8 +335,9 @@ def offline_tracking(cfg):
         min_hand_presence_confidence=cfg['rerun_pd'],
         min_tracking_confidence=cfg['jointconf'])
     detector = HandLandmarker.create_from_options(options)
-
-    os.add_dll_directory("C:\\Program Files\\Azure Kinect SDK v1.4.1\\sdk\\windows-desktop\\amd64\\release\\bin")
+     
+     #if you get an error about missing dll, try to explicitily add path to Azure Kinect SDK bin folder as in the comment below
+     #os.add_dll_directory("C:\\Program Files\\Azure Kinect SDK v1.4.1\\sdk\\windows-desktop\\amd64\\release\\bin")
 
     # PERFORM BODY TRACKING WITH KINECT AZURE
     # Initialize the library, if the library is not found, add the library path as argument
