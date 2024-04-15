@@ -313,6 +313,8 @@ def save_tracking_data(filepath):
         "recorded_tracking": jsonpickle.encode(TRACKING_DATA)
     }
 
+    if 'json' not in filepath:
+        filepath+=".json"
     # Serialize data to JSON
     with open(filepath, 'w') as fp:
         data=json.dumps(data, indent=4)
