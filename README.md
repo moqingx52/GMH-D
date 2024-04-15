@@ -67,7 +67,7 @@ While the method was developed for Azure Kinect, it can be extended to any RGB-D
 
 ## Usage
 
-### Running the Code
+### Running the Code - AZURE KINECT (TESTED)
 
 The main entry point of the code is the `GMHD_AzureKinect.py` script. You can run the script with various options to specify the processing mode, input file paths, and other parameters:
 
@@ -79,7 +79,7 @@ python GMHD_AzureKinect.py --mode <mode> --mkvfilepath <mkvfilepath> --mkvfilena
 
 - `mode`: Processing mode (`offline` or `online`).
 - `mkvfilepath`: Path to the folder containing the MKV file.
-- `mkvfilename`: MKV filename.
+- `mkvfilename`: MKV file name.
 - `save`: Save tracked joints (`yes` or `no`).
 - `outputpath`: Absolute path to the output folder (only if `save` is `yes`).
 - `outputname`: Name for the tracking output JSON file (only if `save` is `yes`).
@@ -95,13 +95,50 @@ python GMHD_AzureKinect.py --mode <mode> --mkvfilepath <mkvfilepath> --mkvfilena
 #### Offline Mode:
 
 ```bash
-python GMHD_AzureKinect.py --mode offline --mkvfilepath /path/to/mkv/folder --mkvfilename example.mkv --save yes --outputpath /path/to/output/folder --outputname tracking_data --n_hands 1 --handconf 0.5 --rerun_pd 0.2 --jointconf 0.5 --interval 5 --visualize yes
+python GMHD_AzureKinect.py --mode offline --mkvfilepath /path/to/mkv/folder --mkvfilename example.mkv --save yes --outputpath /path/to/output/folder --outputname tracking_data --n_hands 1 --handconf 0.5 --rerun_pd 0.2 --jointconf 0.5 --visualize yes
 ```
 
 #### Online Mode:
 
 ```bash
 python GMHD_AzureKinect.py --mode online --save no --n_hands 1 --handconf 0.5 --rerun_pd 0.2 --jointconf 0.5 --interval 5 --visualize yes
+```
+
+### Running the Code - Intel RealSense D4xx cameras (TESTED with Intel RealSense D415)
+
+The main entry point of the code is the `GMHD_RealSense.py` script. You can run the script with various options to specify the processing mode, input file paths, and other parameters:
+
+```bash
+python GMHD_AzureKinect.py --mode <mode> --bagfilepath <mkvfilepath> --bagfilename <mkvfilename> --save <yes/no> --outputpath <outputpath> --outputname <outputname> --n_hands <n_hands> --handconf <handconf> --rerun_pd <rerun_pd> --jointconf <jointconf> --interval <interval> --visualize <yes/no>
+```
+
+#### Options:
+
+- `mode`: Processing mode (`offline` or `online`).
+- `bagfilepath`: Path to the folder containing the pre-recorded bag file.
+- `bagfilename`: bag file name.
+- `save`: Save tracked joints (`yes` or `no`).
+- `outputpath`: Absolute path to the output folder (only if `save` is `yes`).
+- `outputname`: Name for the tracking output JSON file (only if `save` is `yes`).
+- `n_hands`: Number of hands to track (should be `>=1`).
+- `handconf`: Confidence threshold for hand tracking (range: `[0, 1]`).
+- `rerun_pd`: Confidence of detection before rerunning Palm Detector (range: `[0, 1]`).
+- `jointconf`: Confidence threshold for joint tracking (range: `[0, 1]`).
+- `interval`: Set greater than `0` for automatically recording `t` seconds (range: `[1, +inf]`).
+- `visualize`: Visualize tracking while processing video (`yes` or `no`).
+
+### Examples:
+
+#### Offline Mode:
+
+```bash
+python GMHD_RealSense.py --mode offline --bagfilepath /path/to/bag/folder --bagfilename example.bag --save yes --outputpath /path/to/output/folder --outputname tracking_data --n_hands 1 --handconf 0.5 --rerun_pd 0.2 --jointconf 0.5 --visualize yes
+```
+
+#### Online Mode:
+
+```bash
+python GMHD_RealSense.py --mode online --save no --n_hands 1 --handconf 0.5 --rerun_pd 0.2 --jointconf 0.5 --interval 5 --visualize yes
 ```
 
 ## License
