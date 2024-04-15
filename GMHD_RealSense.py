@@ -282,7 +282,7 @@ def online_tracking(cfg):
     config_pipeline=pipeline.start(config)
 
     # calculate FPS
-    previousTime_FPS = 0
+    previousTime_FPS = -1
     startTime = time.time()
     currentTime = 0
 
@@ -293,6 +293,9 @@ def online_tracking(cfg):
         depth_image = np.asanyarray(capture.get_depth_frame().get_data())  # depth trasformata in color
         if img_color is not None and depth_image is not None:
             color_timestamp = capture.get_timestamp()
+            #captures may be asyncronously managed in recording, so we must ensure temporal consistency of consecutive frames
+            if previousTime_FPS>=color_timestamp:
+                continue
             rgb_image = cv2.cvtColor(img_color, cv2.COLOR_BGRA2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_image)
             # STEP 4: Detect hand landmarks from the input image.
@@ -377,7 +380,6 @@ def offline_tracking(cfg):
                 #captures may be asyncronously managed in recording, so we must ensure temporal consistency of consecutive frames
                 if previousTime_FPS>=color_timestamp:
                     continue
-                print(color_timestamp)
                 color_format = str(capture.get_color_frame().profile).split(" ")[-1].strip('>')
                 img_color=convert_to_bgra_if_required(color_format, img_color)
                 rgb_image = cv2.cvtColor(img_color, cv2.COLOR_BGRA2RGB)
