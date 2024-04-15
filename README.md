@@ -59,11 +59,6 @@ While the method was developed for Azure Kinect, it can be extended to any RGB-D
     ```bash
     pip install -r requirements.txt
     ```
-2. Install the required dependencies:
-
-    ```bash
-    pip install -r requirements.txt
-    ```
 
 ## Usage
 
