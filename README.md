@@ -23,7 +23,7 @@ arXiv preprint arXiv:2308.01088 (2023).
 
 If you plan to use this code, please consider citing the above publications in your work. 
 
-While the method was developed for Azure Kinect, it can be extended to any RGB-D camera. We are currently working on implementing the solution for Intel RealSense D4XX family, Orbecc FEMTO. Future plans for porting the solution on smartphones and tablets embedding RGB-D cameras (Ipad, IPhone) have been planned. If you want to contribute, feel free to collaborate :-)
+While the method was developed and validated for Azure Kinect, it can be extended to any RGB-D camera. Currently, Intel RealSense D4XX family of cameras is supported and the code for Azure Kinect may be easily adapted for Orbecc FEMTO cameras, using a wrapper of Azure Kinect SDK. Future plans for porting the solution on smartphones and tablets embedding RGB-D cameras (Ipad, IPhone) have been planned. If you want to contribute, feel free to collaborate to the project :-)
 
 ----------
 
