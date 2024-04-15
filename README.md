@@ -104,6 +104,8 @@ python GMHD_AzureKinect.py --mode offline --mkvfilepath /path/to/mkv/folder --mk
 python GMHD_AzureKinect.py --mode online --save no --n_hands 1 --handconf 0.5 --rerun_pd 0.2 --jointconf 0.5 --interval 5 --visualize yes
 ```
 
+
+
 ### Running the Code - Intel RealSense D4xx cameras (TESTED with Intel RealSense D415)
 
 The main entry point of the code is the `GMHD_RealSense.py` script. You can run the script with various options to specify the processing mode, input file paths, and other parameters:
