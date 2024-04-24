@@ -339,7 +339,7 @@ def save_tracking_data(filepath):
 
 def offline_tracking(cfg):
     """
-       Method to run GMH-D offline, by processing an input mkv file obtained by using Azure Kinect recording utilities
+       Method to run GMH-D offline, by processing an input mkv file obtained by using Intel Realsense recording utilities
        :param cfg: dictionary containing all the input configuration from command line execution
        """
 
@@ -359,35 +359,61 @@ def offline_tracking(cfg):
 
     # Configure streams
     config = rs.config()
-    rs.config.enable_device_from_file(config, os.path.join(cfg['bagfilepath'], cfg['bagfilename']))
+    rs.config.enable_device_from_file(config, os.path.join(cfg['bagfilepath'], cfg['bagfilename']), repeat_playback=False)
 
     config.enable_stream(rs.stream.depth)
     config.enable_stream(rs.stream.color)
 
     config_pipeline = pipeline.start(config)
 
+    # Disable real-time playback to process frames sequentially.
+    playback = config_pipeline.get_device().as_playback()
+    playback.set_real_time(False)
+
     # print(playback_config)
     # calculate FPS
     previousTime_FPS = -1
+    success = True
     try:
-        while True:
+        while success:
             # Get the next capture (blocking function)
-            capture = pipeline.wait_for_frames(60)
+            success, capture = pipeline.try_wait_for_frames(60)
+
+            if not success:
+                print('\033[96m' + "End of frames"+'\033[0m')
+                break
+
+            # both outputs as numpy array    
             img_color = np.asanyarray(capture.get_color_frame().get_data())
-            depth_image = np.asanyarray(capture.get_depth_frame().get_data())  # depth trasformata in color
+            depth_image = np.asanyarray(capture.get_depth_frame().get_data())
+
+
             if img_color is not None and depth_image is not None:
+
+                # save the timestamp at which the each image is captured
                 color_timestamp = capture.get_timestamp()
+
                 #captures may be asyncronously managed in recording, so we must ensure temporal consistency of consecutive frames
                 if previousTime_FPS>=color_timestamp:
                     continue
+
+                # get the color format of the image /BRG/ other...
                 color_format = str(capture.get_color_frame().profile).split(" ")[-1].strip('>')
                 img_color=convert_to_bgra_if_required(color_format, img_color)
                 rgb_image = cv2.cvtColor(img_color, cv2.COLOR_BGRA2RGB)
+
+                # setup mediapipe image
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_image)
-                # STEP 4: Detect hand landmarks from the input image.
+
+
+                # Detect hand landmarks from the input image.
                 detection_result = detector.detect_for_video(mp_image, int(color_timestamp))
+
+
                 process_sync_tracking(detection_result, img_color, depth_image, color_timestamp, config_pipeline.get_stream(
                     rs.stream.depth).as_video_stream_profile().get_intrinsics())
+                
+
                 if (previousTime_FPS > 0):
                     # Calculating the fps
                     fps = (1 / (color_timestamp - previousTime_FPS)) * 1e3
@@ -400,6 +426,7 @@ def offline_tracking(cfg):
                 cv2.destroyAllWindows()
                 break
     except RuntimeError as end:
+        print('\033[95m' + end + '\033[0m')
         print("Extraction of tracking data completed")
     if cfg['save'] == 'yes':
         save_tracking_data(os.path.join(cfg['outputpath'], cfg['outputname']))
