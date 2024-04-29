@@ -117,7 +117,7 @@ def main(**cfg):
 
     if cfg['mode']=='offline':
        if cfg['bagfilepath']=="-1" or cfg['bagfilename']=='-1':
-           print("Offline mode, but file path or file name not specified. Use --mkvfilepath option to specify the path and --mkfilename the name of mkv file to process")
+           print("Offline mode, but file path or file name not specified. Use --bagfilepath option to specify the path and --bagfilename the name of bag file to process")
            return -1
        if not os.path.exists(os.path.join(cfg['bagfilepath'], cfg['bagfilename'])):
            print("The specified file does not exist.") 
@@ -254,7 +254,7 @@ def process_sync_tracking(detection_result: HandLandmarkerResult, bgr_image, dep
 
 def online_tracking(cfg):
     """
-    Method to run GMH-D online, by processing input from a connected Azure Kinect device (only one device at a time)
+    Method to run GMH-D online, by processing input from a connected Realsense D4XX device (only one device at a time)
     :param cfg: dictionary containing all the input configuration from command line execution
     """
     #setup mediapipe tracking
@@ -290,7 +290,7 @@ def online_tracking(cfg):
         # Get the next capture (blocking function)
         capture = pipeline.wait_for_frames()
         img_color = np.asanyarray(capture.get_color_frame().get_data())
-        depth_image = np.asanyarray(capture.get_depth_frame().get_data())  # depth trasformata in color
+        depth_image = np.asanyarray(capture.get_depth_frame().get_data())  # depth trasformed in color
         if img_color is not None and depth_image is not None:
             color_timestamp = capture.get_timestamp()
             #captures may be asyncronously managed in recording, so we must ensure temporal consistency of consecutive frames
@@ -339,7 +339,7 @@ def save_tracking_data(filepath):
 
 def offline_tracking(cfg):
     """
-       Method to run GMH-D offline, by processing an input mkv file obtained by using Intel Realsense recording utilities
+       Method to run GMH-D offline, by processing an input bag file obtained by using Intel Realsense recording utilities
        :param cfg: dictionary containing all the input configuration from command line execution
        """
 
