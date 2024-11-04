@@ -18,7 +18,7 @@ doi: 10.1109/ICDH55609.2022.00029.
 - G. Amprimo, G. Masi, G. Pettiti, G. Olmo, L. Priano, C. Ferraris
 "Hand tracking for clinical applications: validation of the google mediapipe hand (GMH) and
  the depth-enhanced GMH-D frameworks."
-arXiv preprint arXiv:2308.01088 (2023).
+Elsevier, Biomedical Signal Processing and Controls (2024) doi: 10.1016/j.bspc.2024.106508.
 ```
 
 If you plan to use this code, please consider citing the above publications in your work. 
