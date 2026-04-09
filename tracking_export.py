@@ -16,6 +16,7 @@ import numpy as np
 
 # 与 mediapipe.solutions.hands.HandLandmark 枚举顺序一致（WRIST 为首）
 _WRIST = 0
+_THUMB_CMC = 1
 _INDEX_FINGER_MCP = 5
 _MIDDLE_FINGER_MCP = 9
 _PINKY_MCP = 17
@@ -78,8 +79,8 @@ def estimate_R_wrist_cam(joints_xyz: np.ndarray, side: str) -> np.ndarray:
 
     约定：
     - z 轴：手腕 -> 中指 MCP（朝手指根方向）
-    - y 轴：掌面法向；左手取 palm_normal，右手取 -palm_normal，使左右手语义一致
-    - x 轴：由 y × z 得到，保证正交右手系
+    - x 轴：掌面横向；左手取 index -> pinky，右手取 pinky -> index，使左右手 x 轴同语义
+    - y 轴：由 z × x 得到，保证正交右手系
     列向量为手坐标系 x/y/z 在相机系下的表达。
     """
     side = _norm_hand_side(side)
@@ -99,20 +100,10 @@ def estimate_R_wrist_cam(joints_xyz: np.ndarray, side: str) -> np.ndarray:
         return np.eye(3, dtype=np.float64)
     v_z = v_z / nz
 
-    palm_across = p17 - p5
-    na = float(np.linalg.norm(palm_across))
-    if na < 1e-9:
-        return np.eye(3, dtype=np.float64)
-    palm_across = palm_across / na
-
-    palm_normal = np.cross(palm_across, v_z)
-    nn = float(np.linalg.norm(palm_normal))
-    if nn < 1e-9:
-        return np.eye(3, dtype=np.float64)
-    palm_normal = palm_normal / nn
-
-    v_y = palm_normal if side == "left" else -palm_normal
-    v_x = np.cross(v_y, v_z)
+    if side == "left":
+        v_x = p17 - p5
+    else:
+        v_x = p5 - p17
     nx = float(np.linalg.norm(v_x))
     if nx < 1e-9:
         return np.eye(3, dtype=np.float64)
@@ -123,6 +114,12 @@ def estimate_R_wrist_cam(joints_xyz: np.ndarray, side: str) -> np.ndarray:
     if ny < 1e-9:
         return np.eye(3, dtype=np.float64)
     v_y = v_y / ny
+
+    v_x = np.cross(v_y, v_z)
+    nx = float(np.linalg.norm(v_x))
+    if nx < 1e-9:
+        return np.eye(3, dtype=np.float64)
+    v_x = v_x / nx
     return np.stack([v_x, v_y, v_z], axis=1)
 
 
@@ -178,6 +175,7 @@ def tracking_frames_to_records(
                 "timestamp_sec": timestamp_sec,
                 "p_wrist": p_wrist.tolist(),
                 "R_wrist": r_cam.tolist(),
+                "keypoints_3d_local": (arr - arr[_WRIST:_WRIST + 1]).tolist(),
             }
             if t_cam2base is not None:
                 p_b, r_b = wrist_pose_cam_to_base(p_wrist, r_cam, t_cam2base)
