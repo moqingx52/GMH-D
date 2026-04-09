@@ -14,7 +14,6 @@ Script for running GMH-D handtracking algorithm with Azure Kinect or RGB-D camer
 import os
 import time
 import wget
-import jsonpickle
 import click as click
 import cv2
 import mediapipe as mp
@@ -22,10 +21,10 @@ import pyk4a
 from mediapipe import solutions
 from mediapipe.framework.formats import landmark_pb2
 import numpy as np
-from collections import OrderedDict
-import json
 from mediapipe.tasks.python.vision import HandLandmarkerOptions
 from pyk4a import *
+
+from tracking_export import save_xr_teleop_tracking_json
 
 #Setup all mediapipe components needed for running the code
 BaseOptions = mp.tasks.BaseOptions
@@ -75,7 +74,11 @@ TRACKING_DATA=[]
 @click.option("--jointconf", default=0.5, help="Confidence threshold for joint tracking [0,1]")
 @click.option("--interval", default=10, help="Set >0 for automatically recording t seconds [1, +inf]")
 @click.option("--visualize", default='yes', help="Visualize tracking while processing video (yes/no)")
-
+@click.option(
+    "--cam2base-json",
+    default="",
+    help="可选：含 T_cam2base(4x4) 的 JSON，导出时同时写入 p_wrist_base/R_wrist_base（与 HaMeR/xr_teleoperate 约定一致）",
+)
 
 
 def main(**cfg):
@@ -301,24 +304,14 @@ def online_tracking(cfg):
             cv2.destroyAllWindows()
             break
     if cfg['save']=='yes':
-        save_tracking_data(os.path.join(cfg['outputpath'], cfg['outputname']))
-
-def save_tracking_data(filepath):
-    """
-    Method to save GMH-D tracking data as a json dump file.
-    :param filepath: output path where to dump the tracking data
-    """
-    data = {
-        "code_version": "GMHD_1.0",
-        "recorded_tracking": jsonpickle.encode(TRACKING_DATA)
-    }
-
-    if 'json' not in filepath:
-        filepath+=".json"
-    # Serialize data to JSON
-    with open(filepath, 'w') as fp:
-        data=json.dumps(data, indent=4)
-        fp.write(data)
+        cb = (cfg.get("cam2base_json") or "").strip() or None
+        out = save_xr_teleop_tracking_json(
+            TRACKING_DATA,
+            os.path.join(cfg["outputpath"], cfg["outputname"]),
+            cam2base_json=cb,
+            timestamp_to_sec=1e-6,
+        )
+        print(f"Saved xr_teleoperate-compatible tracking JSON: {out}")
 
 def offline_tracking(cfg):
     """
@@ -377,7 +370,14 @@ def offline_tracking(cfg):
         except EOFError:
             break
     if cfg['save'] == 'yes':
-        save_tracking_data(os.path.join(cfg['outputpath'], cfg['outputname']))
+        cb = (cfg.get("cam2base_json") or "").strip() or None
+        out = save_xr_teleop_tracking_json(
+            TRACKING_DATA,
+            os.path.join(cfg["outputpath"], cfg["outputname"]),
+            cam2base_json=cb,
+            timestamp_to_sec=1e-6,
+        )
+        print(f"Saved xr_teleoperate-compatible tracking JSON: {out}")
     print("Extraction of tracking data completed")
 
 if __name__ == "__main__":

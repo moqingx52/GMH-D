@@ -1,5 +1,4 @@
 wget~=3.2
-jsonpickle~=3.0.3
 click~=8.1.7
 opencv-python~=4.9.0.80
 mediapipe~=0.10.11
