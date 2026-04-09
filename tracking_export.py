@@ -18,6 +18,7 @@ import numpy as np
 _WRIST = 0
 _INDEX_FINGER_MCP = 5
 _MIDDLE_FINGER_MCP = 9
+_PINKY_MCP = 17
 
 
 def load_T_cam2base_from_json(path: str) -> np.ndarray:
@@ -68,27 +69,56 @@ def _landmarks_to_xyz_array(joints: Sequence[Any]) -> Optional[np.ndarray]:
     return arr
 
 
-def estimate_R_wrist_cam(joints_xyz: np.ndarray) -> np.ndarray:
+def estimate_R_wrist_cam(joints_xyz: np.ndarray, side: str) -> np.ndarray:
     """
-    用手腕—食指 MCP—中指 MCP 在相机坐标系下构造近似手腕旋转，供 IK 使用（非 MANO 真值）。
+    用手腕与掌面关键点在相机坐标系下构造稳定的近似手腕旋转，供 IK 使用（非 MANO 真值）。
+
+    目标：让左右手得到同语义的腕部坐标系，避免镜像手直接套同一套叉乘顺序后
+    某一轴翻转，进而把双臂 IK 解成一高一低。
+
+    约定：
+    - z 轴：手腕 -> 中指 MCP（朝手指根方向）
+    - y 轴：掌面法向；左手取 palm_normal，右手取 -palm_normal，使左右手语义一致
+    - x 轴：由 y × z 得到，保证正交右手系
     列向量为手坐标系 x/y/z 在相机系下的表达。
     """
+    side = _norm_hand_side(side)
+    if side is None:
+        return np.eye(3, dtype=np.float64)
+
     p0 = joints_xyz[_WRIST]
     p5 = joints_xyz[_INDEX_FINGER_MCP]
     p9 = joints_xyz[_MIDDLE_FINGER_MCP]
-    if not np.all(np.isfinite(np.stack([p0, p5, p9]))):
+    p17 = joints_xyz[_PINKY_MCP]
+    if not np.all(np.isfinite(np.stack([p0, p5, p9, p17]))):
         return np.eye(3, dtype=np.float64)
+
     v_z = p9 - p0
     nz = float(np.linalg.norm(v_z))
     if nz < 1e-9:
         return np.eye(3, dtype=np.float64)
     v_z = v_z / nz
-    v_x = np.cross(v_z, p5 - p0)
+
+    palm_across = p17 - p5
+    na = float(np.linalg.norm(palm_across))
+    if na < 1e-9:
+        return np.eye(3, dtype=np.float64)
+    palm_across = palm_across / na
+
+    palm_normal = np.cross(palm_across, v_z)
+    nn = float(np.linalg.norm(palm_normal))
+    if nn < 1e-9:
+        return np.eye(3, dtype=np.float64)
+    palm_normal = palm_normal / nn
+
+    v_y = palm_normal if side == "left" else -palm_normal
+    v_x = np.cross(v_y, v_z)
     nx = float(np.linalg.norm(v_x))
     if nx < 1e-9:
         return np.eye(3, dtype=np.float64)
     v_x = v_x / nx
-    v_y = np.cross(v_x, v_z)
+
+    v_y = np.cross(v_z, v_x)
     ny = float(np.linalg.norm(v_y))
     if ny < 1e-9:
         return np.eye(3, dtype=np.float64)
@@ -139,7 +169,7 @@ def tracking_frames_to_records(
             if arr is None:
                 continue
             p_wrist = arr[_WRIST]
-            r_cam = estimate_R_wrist_cam(arr)
+            r_cam = estimate_R_wrist_cam(arr, side)
             score = _wrist_score(joints)
             rec: dict[str, Any] = {
                 "frame_idx": int(frame_idx),
