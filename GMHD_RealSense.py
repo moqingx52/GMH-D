@@ -23,7 +23,7 @@ import numpy as np
 from mediapipe.tasks.python.vision import HandLandmarkerOptions
 import pyrealsense2 as rs
 
-from tracking_export import save_xr_teleop_tracking_json
+from tracking_export import save_xr_teleop_tracking_json, build_tracking_debug_stats, print_tracking_debug_stats
 
 #Setup all mediapipe components needed for running the code
 BaseOptions = mp.tasks.BaseOptions
@@ -89,6 +89,7 @@ def convert_to_bgra_if_required(input_format, input_data):
     default="",
     help="可选：含 T_cam2base(4x4) 的 JSON，导出时同时写入 p_wrist_base/R_wrist_base（与 HaMeR/xr_teleoperate 约定一致）",
 )
+@click.option("--debug", is_flag=True, default=False, help="输出 GMH-D 调试统计信息")
 
 def main(**cfg):
     """
@@ -150,6 +151,48 @@ class Frame:
         self.timestamp=timestamp
         self.hands=hands_gmhd_list
 
+
+def _is_valid_depth_value(depth_value):
+    try:
+        d = float(depth_value)
+    except Exception:
+        return False
+    return np.isfinite(d) and d > 1.0
+
+
+def _sample_valid_depth(depth_image, px, py, max_radius=4):
+    h, w = depth_image.shape[:2]
+    if px is None or py is None:
+        return None
+    px = int(px)
+    py = int(py)
+    if px < 0 or py < 0 or px >= w or py >= h:
+        return None
+
+    center = depth_image[py, px]
+    if _is_valid_depth_value(center):
+        return float(center)
+
+    for radius in range(1, int(max_radius) + 1):
+        x0 = max(0, px - radius)
+        x1 = min(w - 1, px + radius)
+        y0 = max(0, py - radius)
+        y1 = min(h - 1, py + radius)
+        patch = depth_image[y0:y1 + 1, x0:x1 + 1]
+        vals = patch[np.isfinite(patch)]
+        vals = vals[vals > 1.0]
+        if vals.size > 0:
+            return float(np.median(vals))
+    return None
+
+
+def _is_valid_point3d(point_3d):
+    try:
+        arr = np.asarray(point_3d, dtype=np.float64).reshape(3)
+    except Exception:
+        return False
+    return np.all(np.isfinite(arr)) and float(np.linalg.norm(arr)) > 1e-9
+
 def convert_depth_to_phys_coord_using_realsense(x, y, depth, intrinsics):
   result = rs.rs2_deproject_pixel_to_point(intrinsics, [x, y], depth)  #result[0]: right, result[1]: down, result[2]: forward
   return result[0], result[1], result[2]
@@ -164,7 +207,7 @@ def GMHD_estimation(hand_landmarks, depth_image, cameraInfo):
     frameWidth=depth_image.shape[1]
     frameHeigth=depth_image.shape[0]
     frameHeigth
-    wrist_depth_tof=0
+    wrist_depth_tof=None
     joint_list=[]
     for joint_name in solutions.hands.HandLandmark:
         point=hand_landmarks[joint_name]
@@ -173,21 +216,34 @@ def GMHD_estimation(hand_landmarks, depth_image, cameraInfo):
             point.y,
             frameWidth,
             frameHeigth)
+        point_3D = (None, None, None)
+        if pixelCoordinatesLandmark is None:
+            gmhd_point=GMHDLandmark(point_3D, point.visibility, point.presence)
+            joint_list.append(gmhd_point)
+            continue
+        px, py = int(pixelCoordinatesLandmark[0]), int(pixelCoordinatesLandmark[1])
         # if point is wrist, we get the tof estimation of the joint to compute GMHD
         if joint_name==solutions.hands.HandLandmark.WRIST:
-            wrist_depth_tof= depth_image[pixelCoordinatesLandmark[1], pixelCoordinatesLandmark[0]] #axis are reversed for retrieving from depth map
-            depth_estimated= wrist_depth_tof
+            wrist_depth_tof = _sample_valid_depth(depth_image, px, py)
+            depth_estimated = wrist_depth_tof
             # Convert the depth image to RGB for visualization
             depth_image = cv2.applyColorMap(cv2.convertScaleAbs(depth_image), cv2.COLORMAP_INFERNO)
         else:
-            depth_estimated= wrist_depth_tof + wrist_depth_tof * point.z #GMH-D depth estimation for all other joints
-        try:
-            point_3D= convert_depth_to_phys_coord_using_realsense(int(pixelCoordinatesLandmark[0]), int(pixelCoordinatesLandmark[1]), int(depth_estimated),
-                                              cameraInfo)
-        except Exception as e:
-            print(e)
-            print(f'3D conversion failed: are {wrist_depth_tof} and {depth_estimated} from depthmap invalid? Appending None')
-            point_3D = (None, None, None)
+            if wrist_depth_tof is None:
+                depth_estimated = None
+            else:
+                depth_estimated = wrist_depth_tof * (1.0 + float(point.z))
+                if not _is_valid_depth_value(depth_estimated):
+                    depth_estimated = None
+        if depth_estimated is not None:
+            try:
+                point_3D= convert_depth_to_phys_coord_using_realsense(px, py, int(round(depth_estimated)), cameraInfo)
+                if not _is_valid_point3d(point_3D):
+                    point_3D = (None, None, None)
+            except Exception as e:
+                print(e)
+                print(f'3D conversion failed: are {wrist_depth_tof} and {depth_estimated} from depthmap invalid? Appending None')
+                point_3D = (None, None, None)
         gmhd_point=GMHDLandmark(point_3D, point.visibility, point.presence)
         joint_list.append(gmhd_point)
     return joint_list
@@ -323,6 +379,8 @@ def online_tracking(cfg):
             cv2.destroyAllWindows()
             break
     if cfg['save']=='yes':
+        if cfg.get('debug'):
+            print_tracking_debug_stats(build_tracking_debug_stats(TRACKING_DATA))
         cb = (cfg.get("cam2base_json") or "").strip() or None
         out = save_xr_teleop_tracking_json(
             TRACKING_DATA,
