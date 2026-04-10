@@ -109,7 +109,7 @@ python GMHD_AzureKinect.py --mode online --save no --n_hands 1 --handconf 0.5 --
 The main entry point of the code is the `GMHD_RealSense.py` script. You can run the script with various options to specify the processing mode, input file paths, and other parameters:
 
 ```bash
-python GMHD_AzureKinect.py --mode <mode> --bagfilepath <mkvfilepath> --bagfilename <mkvfilename> --save <yes/no> --outputpath <outputpath> --outputname <outputname> --n_hands <n_hands> --handconf <handconf> --rerun_pd <rerun_pd> --jointconf <jointconf> --interval <interval> --visualize <yes/no>
+python GMHD_RealSense.py --mode <mode> --bagfilepath <bagfilepath> --bagfilename <bagfilename> --save <yes/no> --outputpath <outputpath> --outputname <outputname> --n_hands <n_hands> --handconf <handconf> --rerun_pd <rerun_pd> --jointconf <jointconf> --interval <interval> --visualize <yes/no>
 ```
 
 #### Options:
@@ -126,6 +126,8 @@ python GMHD_AzureKinect.py --mode <mode> --bagfilepath <mkvfilepath> --bagfilena
 - `jointconf`: Confidence threshold for joint tracking (range: `[0, 1]`).
 - `interval`: Set greater than `0` for automatically recording `t` seconds (range: `[1, +inf]`).
 - `visualize`: Visualize tracking while processing video (`yes` or `no`).
+- `online_workflow`: 仅在线模式有效。`stream` 为边采集边跟踪；`record_then_process` 为先录制并显示左 RGB / 右深度预览，再离线处理录制出的 bag。
+- `record_bag_path`: `online_workflow=record_then_process` 时可选，用于指定录制 bag 路径；默认保存到 `outputpath/outputname.bag`。
 
 ### Examples:
 
@@ -139,6 +141,12 @@ python GMHD_RealSense.py --mode offline --bagfilepath /path/to/bag/folder --bagf
 
 ```bash
 python GMHD_RealSense.py --mode online --save no --n_hands 1 --handconf 0.5 --rerun_pd 0.2 --jointconf 0.5 --interval 5 --visualize yes
+```
+
+#### Online Record Then Process:
+
+```bash
+python GMHD_RealSense.py --mode online --online-workflow record_then_process --save yes --outputpath ./out --outputname tracking_data --n_hands 2 --handconf 0.5 --rerun_pd 0.2 --jointconf 0.5 --visualize yes --debug
 ```
 
 ## License
