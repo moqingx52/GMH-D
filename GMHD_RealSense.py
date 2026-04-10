@@ -226,8 +226,6 @@ def GMHD_estimation(hand_landmarks, depth_image, cameraInfo):
         if joint_name==solutions.hands.HandLandmark.WRIST:
             wrist_depth_tof = _sample_valid_depth(depth_image, px, py)
             depth_estimated = wrist_depth_tof
-            # Convert the depth image to RGB for visualization
-            depth_image = cv2.applyColorMap(cv2.convertScaleAbs(depth_image), cv2.COLORMAP_INFERNO)
         else:
             if wrist_depth_tof is None:
                 depth_estimated = None
@@ -340,44 +338,69 @@ def online_tracking(cfg):
     config.enable_stream(rs.stream.color, 640, 480, rs.format.bgra8, 30)
 
     config_pipeline=pipeline.start(config)
+    depth_intrinsics = config_pipeline.get_stream(rs.stream.depth).as_video_stream_profile().get_intrinsics()
 
     # calculate FPS
     previousTime_FPS = -1
     startTime = time.time()
     currentTime = 0
+    consecutive_timeouts = 0
 
-    while True:
-        # Get the next capture (blocking function)
-        capture = pipeline.wait_for_frames()
-        img_color = np.asanyarray(capture.get_color_frame().get_data())
-        depth_image = np.asanyarray(capture.get_depth_frame().get_data())  # depth trasformed in color
-        if img_color is not None and depth_image is not None:
-            color_timestamp = capture.get_timestamp()
-            #captures may be asyncronously managed in recording, so we must ensure temporal consistency of consecutive frames
-            if previousTime_FPS>=color_timestamp:
+    try:
+        while True:
+            loop_start_time = time.time()
+            try:
+                # Get the next capture (blocking function)
+                capture = pipeline.wait_for_frames(5000)
+                consecutive_timeouts = 0
+            except RuntimeError as e:
+                consecutive_timeouts += 1
+                print(f"RealSense frame timeout ({consecutive_timeouts}): {e}")
+                if consecutive_timeouts >= 3:
+                    print("Tracking interrupted after repeated frame timeouts")
+                    break
                 continue
-            rgb_image = cv2.cvtColor(img_color, cv2.COLOR_BGRA2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_image)
-            # STEP 4: Detect hand landmarks from the input image.
-            detection_result=detector.detect_for_video(mp_image, int(color_timestamp))
-            currentTime = time.time()
-            process_sync_tracking(detection_result, img_color, depth_image, color_timestamp, config_pipeline.get_stream(rs.stream.depth).as_video_stream_profile().get_intrinsics())
-            if (previousTime_FPS > 0):
-              # Calculating the fps
-              fps = (1 / (color_timestamp - previousTime_FPS))*1e3
-              print("Frame rate: ", fps)
-            previousTime_FPS = color_timestamp
-        else:
-            print("Impossible to retrieve color or depth frame from camera")
-        if 0xFF == 27:
-            print("Tracking interrupted!")
-            cv2.destroyAllWindows()
-            break
-        # stop execution after --interval set seconds
-        if  ((currentTime - startTime) > cfg['interval']):
-            print("Tracking recording completed")
-            cv2.destroyAllWindows()
-            break
+
+            color_frame = capture.get_color_frame()
+            depth_frame = capture.get_depth_frame()
+            if not color_frame or not depth_frame:
+                print("Incomplete RealSense frames received")
+                continue
+
+            img_color = np.asanyarray(color_frame.get_data())
+            depth_image = np.asanyarray(depth_frame.get_data())  # depth trasformed in color
+            if img_color is not None and depth_image is not None:
+                color_timestamp = capture.get_timestamp()
+                #captures may be asyncronously managed in recording, so we must ensure temporal consistency of consecutive frames
+                if previousTime_FPS>=color_timestamp:
+                    continue
+                rgb_image = cv2.cvtColor(img_color, cv2.COLOR_BGRA2RGB)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_image)
+                # STEP 4: Detect hand landmarks from the input image.
+                detection_result=detector.detect_for_video(mp_image, int(color_timestamp))
+                currentTime = time.time()
+                process_sync_tracking(detection_result, img_color, depth_image, color_timestamp, depth_intrinsics)
+                if (previousTime_FPS > 0):
+                  # Calculating the fps
+                  fps = (1 / (color_timestamp - previousTime_FPS))*1e3
+                  print("Frame rate: ", fps)
+                if cfg.get('debug'):
+                    processing_ms = (time.time() - loop_start_time) * 1000.0
+                    print(f"Loop processing time: {processing_ms:.1f} ms")
+                previousTime_FPS = color_timestamp
+            else:
+                print("Impossible to retrieve color or depth frame from camera")
+            if 0xFF == 27:
+                print("Tracking interrupted!")
+                cv2.destroyAllWindows()
+                break
+            # stop execution after --interval set seconds
+            if  ((currentTime - startTime) > cfg['interval']):
+                print("Tracking recording completed")
+                cv2.destroyAllWindows()
+                break
+    finally:
+        pipeline.stop()
     if cfg['save']=='yes':
         if cfg.get('debug'):
             print_tracking_debug_stats(build_tracking_debug_stats(TRACKING_DATA))
