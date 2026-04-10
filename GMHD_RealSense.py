@@ -275,11 +275,12 @@ def _is_valid_depth_value(depth_value):
         d = float(depth_value)
     except Exception:
         return False
-    return np.isfinite(d) and d > 1.0
+    return np.isfinite(d) and d > 0.0
 
 
-def _sample_valid_depth(depth_image, px, py, max_radius=4):
-    h, w = depth_image.shape[:2]
+def _sample_valid_depth_meters(depth_frame, px, py, max_radius=3, z_min=0.05, z_max=2.5):
+    h = int(depth_frame.get_height())
+    w = int(depth_frame.get_width())
     if px is None or py is None:
         return None
     px = int(px)
@@ -287,18 +288,23 @@ def _sample_valid_depth(depth_image, px, py, max_radius=4):
     if px < 0 or py < 0 or px >= w or py >= h:
         return None
 
-    center = depth_image[py, px]
+    center = float(depth_frame.get_distance(px, py))
     if _is_valid_depth_value(center):
-        return float(center)
+        if z_min < center < z_max:
+            return float(center)
 
     for radius in range(1, int(max_radius) + 1):
         x0 = max(0, px - radius)
         x1 = min(w - 1, px + radius)
         y0 = max(0, py - radius)
         y1 = min(h - 1, py + radius)
-        patch = depth_image[y0:y1 + 1, x0:x1 + 1]
-        vals = patch[np.isfinite(patch)]
-        vals = vals[vals > 1.0]
+        vals = []
+        for yy in range(y0, y1 + 1):
+            for xx in range(x0, x1 + 1):
+                d = float(depth_frame.get_distance(xx, yy))
+                if z_min < d < z_max and np.isfinite(d):
+                    vals.append(d)
+        vals = np.asarray(vals, dtype=np.float32)
         if vals.size > 0:
             return float(np.median(vals))
     return None
@@ -315,17 +321,42 @@ def convert_depth_to_phys_coord_using_realsense(x, y, depth, intrinsics):
   result = rs.rs2_deproject_pixel_to_point(intrinsics, [x, y], depth)  #result[0]: right, result[1]: down, result[2]: forward
   return result[0], result[1], result[2]
 
-def GMHD_estimation(hand_landmarks, depth_image, cameraInfo):
+def _palm_anchor_depth(hand_landmarks, frame_width, frame_height, depth_frame):
+    anchor_ids = [
+        solutions.hands.HandLandmark.WRIST,
+        solutions.hands.HandLandmark.THUMB_CMC,
+        solutions.hands.HandLandmark.INDEX_FINGER_MCP,
+        solutions.hands.HandLandmark.MIDDLE_FINGER_MCP,
+        solutions.hands.HandLandmark.RING_FINGER_MCP,
+        solutions.hands.HandLandmark.PINKY_MCP,
+    ]
+    samples = []
+    for joint_id in anchor_ids:
+        p = hand_landmarks[joint_id]
+        pix = solutions.drawing_utils._normalized_to_pixel_coordinates(
+            p.x, p.y, frame_width, frame_height
+        )
+        if pix is None:
+            continue
+        d = _sample_valid_depth_meters(depth_frame, int(pix[0]), int(pix[1]), max_radius=3)
+        if d is not None:
+            samples.append(d)
+    if len(samples) < 3:
+        return None
+    return float(np.median(np.asarray(samples, dtype=np.float32)))
+
+
+def GMHD_estimation(hand_landmarks, depth_frame, cameraInfo):
     """
     Method to estimate the GMHD coordinates of handlandmarks detected by MediaPipe
     :param hand_landmarks: NormalizedHandLandmarks for a single detected hand
     :param depth_image: dpeth image to retrieve depth of wrist estimated by ToF sensor
     :return:
     """
-    frameWidth=depth_image.shape[1]
-    frameHeigth=depth_image.shape[0]
+    frameWidth = int(depth_frame.get_width())
+    frameHeigth = int(depth_frame.get_height())
     frameHeigth
-    wrist_depth_tof=None
+    palm_depth_tof = _palm_anchor_depth(hand_landmarks, frameWidth, frameHeigth, depth_frame)
     joint_list=[]
     for joint_name in solutions.hands.HandLandmark:
         point=hand_landmarks[joint_name]
@@ -340,31 +371,26 @@ def GMHD_estimation(hand_landmarks, depth_image, cameraInfo):
             joint_list.append(gmhd_point)
             continue
         px, py = int(pixelCoordinatesLandmark[0]), int(pixelCoordinatesLandmark[1])
-        # if point is wrist, we get the tof estimation of the joint to compute GMHD
-        if joint_name==solutions.hands.HandLandmark.WRIST:
-            wrist_depth_tof = _sample_valid_depth(depth_image, px, py)
-            depth_estimated = wrist_depth_tof
-        else:
-            if wrist_depth_tof is None:
+        depth_estimated = _sample_valid_depth_meters(depth_frame, px, py, max_radius=3)
+        if depth_estimated is None and palm_depth_tof is not None:
+            # Fallback to palm anchor depth + normalized relative z
+            depth_estimated = palm_depth_tof * (1.0 + float(point.z))
+            if not _is_valid_depth_value(depth_estimated):
                 depth_estimated = None
-            else:
-                depth_estimated = wrist_depth_tof * (1.0 + float(point.z))
-                if not _is_valid_depth_value(depth_estimated):
-                    depth_estimated = None
         if depth_estimated is not None:
             try:
-                point_3D= convert_depth_to_phys_coord_using_realsense(px, py, int(round(depth_estimated)), cameraInfo)
+                point_3D= convert_depth_to_phys_coord_using_realsense(px, py, float(depth_estimated), cameraInfo)
                 if not _is_valid_point3d(point_3D):
                     point_3D = (None, None, None)
             except Exception as e:
                 print(e)
-                print(f'3D conversion failed: are {wrist_depth_tof} and {depth_estimated} from depthmap invalid? Appending None')
+                print(f'3D conversion failed: are {palm_depth_tof} and {depth_estimated} from depthmap invalid? Appending None')
                 point_3D = (None, None, None)
         gmhd_point=GMHDLandmark(point_3D, point.visibility, point.presence)
         joint_list.append(gmhd_point)
     return joint_list
 
-def process_sync_tracking(detection_result: HandLandmarkerResult, bgr_image, depth_image, timestamp_ms: int, cameraInfo, show_window=True):
+def process_sync_tracking(detection_result: HandLandmarkerResult, bgr_image, depth_frame, timestamp_ms: int, cameraInfo, show_window=True):
   """
 
   :param detection_result: HandLandmarkerResult object from MediaPipe inference
@@ -399,7 +425,7 @@ def process_sync_tracking(detection_result: HandLandmarkerResult, bgr_image, dep
         handedness = handedness_list[idx]
 
         # apply GMHD and save tracking
-        joints_GMHD =GMHD_estimation(hand_landmarks, depth_image, cameraInfo)
+        joints_GMHD =GMHD_estimation(hand_landmarks, depth_frame, cameraInfo)
         hands_GMHD.append(GMHDHand(joints_GMHD, handedness))
         # Draw the hand landmarks
         hand_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
@@ -425,8 +451,6 @@ def process_sync_tracking(detection_result: HandLandmarkerResult, bgr_image, dep
         cv2.putText(annotated_image, f"{handedness[0].category_name}",
                     (text_x, text_y), cv2.FONT_HERSHEY_DUPLEX,
                     FONT_SIZE, HANDEDNESS_TEXT_COLOR, FONT_THICKNESS, cv2.LINE_AA)
-        cv2.flip(annotated_image, 1)
-
   except Exception as e:
     print("GMHD computation failed", e)
   if show_window:
@@ -453,6 +477,7 @@ def online_tracking(cfg):
     #open Realsense camera
     # Create a context object. This object owns the handles to all connected realsense devices
     pipeline = rs.pipeline()
+    align = rs.align(rs.stream.color)
 
     # Configure streams
     config = rs.config()
@@ -461,8 +486,7 @@ def online_tracking(cfg):
     config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
     config.enable_stream(rs.stream.color, 640, 480, rs.format.bgra8, 30)
 
-    config_pipeline=pipeline.start(config)
-    depth_intrinsics = config_pipeline.get_stream(rs.stream.depth).as_video_stream_profile().get_intrinsics()
+    pipeline.start(config)
 
     # calculate FPS
     previousTime_FPS = -1
@@ -478,6 +502,7 @@ def online_tracking(cfg):
             try:
                 # Get the next capture (blocking function)
                 capture = pipeline.wait_for_frames(5000)
+                aligned_capture = align.process(capture)
                 consecutive_timeouts = 0
             except RuntimeError as e:
                 consecutive_timeouts += 1
@@ -487,11 +512,12 @@ def online_tracking(cfg):
                     break
                 continue
 
-            color_frame = capture.get_color_frame()
-            depth_frame = capture.get_depth_frame()
+            color_frame = aligned_capture.get_color_frame()
+            depth_frame = aligned_capture.get_depth_frame()
             if not color_frame or not depth_frame:
                 print("Incomplete RealSense frames received")
                 continue
+            depth_intrinsics = depth_frame.profile.as_video_stream_profile().intrinsics
 
             img_color = np.asanyarray(color_frame.get_data())
             depth_image = np.asanyarray(depth_frame.get_data())  # depth trasformed in color
@@ -508,7 +534,7 @@ def online_tracking(cfg):
                 process_sync_tracking(
                     detection_result,
                     img_color,
-                    depth_image,
+                    depth_frame,
                     color_timestamp,
                     depth_intrinsics,
                     show_window=_as_bool_yes(cfg.get('visualize', 'yes')),
@@ -525,10 +551,6 @@ def online_tracking(cfg):
                 previousTime_FPS = color_timestamp
             else:
                 print("Impossible to retrieve color or depth frame from camera")
-            if 0xFF == 27:
-                print("Tracking interrupted!")
-                cv2.destroyAllWindows()
-                break
             # stop execution after --interval set seconds
             if  ((currentTime - startTime) > cfg['interval']):
                 print("Tracking recording completed")
@@ -569,6 +591,7 @@ def offline_tracking(cfg):
     # open Realsense camera
     # Create a context object. This object owns the handles to all connected realsense devices
     pipeline = rs.pipeline()
+    align = rs.align(rs.stream.color)
 
     # Configure streams
     config = rs.config()
@@ -590,7 +613,6 @@ def offline_tracking(cfg):
     frame_count = 0
     fps_samples = []
     processing_start_time = time.time()
-    intrinsics = config_pipeline.get_stream(rs.stream.depth).as_video_stream_profile().get_intrinsics()
     try:
         while success:
             loop_start_time = time.time()
@@ -602,8 +624,14 @@ def offline_tracking(cfg):
                 break
 
             # both outputs as numpy array    
-            img_color = np.asanyarray(capture.get_color_frame().get_data())
-            depth_image = np.asanyarray(capture.get_depth_frame().get_data())
+            aligned_capture = align.process(capture)
+            color_frame = aligned_capture.get_color_frame()
+            depth_frame = aligned_capture.get_depth_frame()
+            if not color_frame or not depth_frame:
+                continue
+            intrinsics = depth_frame.profile.as_video_stream_profile().intrinsics
+            img_color = np.asanyarray(color_frame.get_data())
+            depth_image = np.asanyarray(depth_frame.get_data())
 
 
             if img_color is not None and depth_image is not None:
@@ -616,7 +644,7 @@ def offline_tracking(cfg):
                     continue
 
                 # get the color format of the image /BRG/ other...
-                color_format = str(capture.get_color_frame().profile).split(" ")[-1].strip('>')
+                color_format = str(color_frame.profile).split(" ")[-1].strip('>')
                 img_color=convert_to_bgra_if_required(color_format, img_color)
                 rgb_image = cv2.cvtColor(img_color, cv2.COLOR_BGRA2RGB)
 
@@ -631,7 +659,7 @@ def offline_tracking(cfg):
                 process_sync_tracking(
                     detection_result,
                     img_color,
-                    depth_image,
+                    depth_frame,
                     color_timestamp,
                     intrinsics,
                     show_window=_as_bool_yes(cfg.get('visualize', 'yes')),
@@ -649,10 +677,6 @@ def offline_tracking(cfg):
                 previousTime_FPS = color_timestamp
             else:
                 print("Impossible to retrieve color or depth frame from camera")
-            if 0xFF == 27:
-                print("Tracking interrupted!")
-                cv2.destroyAllWindows()
-                break
     except RuntimeError as end:
         print(f"Playback runtime error: {end}")
         print("Extraction of tracking data completed")
