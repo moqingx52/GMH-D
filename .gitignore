@@ -1,1 +1,6 @@
 out/tracking_data.bag
+__pycache__/
+out/
+*.pyc
+*.pyo
+*.pyd
